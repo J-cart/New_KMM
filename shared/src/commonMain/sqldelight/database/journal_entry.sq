@@ -1,0 +1,25 @@
+CREATE TABLE JournalEntryEntity(
+    id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    uuid TEXT NOT NULL,
+    title TEXT NOT NULL,
+    desc TEXT NOT NULL,
+    audioFile TEXT NOT NULL,
+    createdAt INTEGER NOT NULL,
+    updatedAt INTEGER  NOT NULL
+);
+
+getAllJournalEntry:
+SELECT * FROM JournalEntryEntity;
+
+deleteAllJournalEntry:
+DELETE FROM JournalEntryEntity;
+
+getJournalEntryById:
+SELECT * FROM JournalEntryEntity WHERE id = ?;
+
+deleteJournalEntryById:
+DELETE FROM JournalEntryEntity WHERE id = ?;
+
+insertJournalEntry:
+INSERT OR REPLACE INTO JournalEntryEntity(id,uuid,title,desc,audioFile,createdAt,updatedAt) VALUES (?,?,?,?,?,?,?);
+

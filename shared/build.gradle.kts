@@ -88,7 +88,7 @@ kotlin {
 }
 
 sqldelight {
-    database("JournyPrototypeDatatbase"){
+    database("JournyPrototypeDatabase"){
         packageName = "com.prototype.newkmm.database"
         sourceFolders = listOf("sqldelight")
     }
