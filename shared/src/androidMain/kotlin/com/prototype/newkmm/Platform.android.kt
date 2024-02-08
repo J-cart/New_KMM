@@ -44,12 +44,15 @@ import androidx.core.content.ContextCompat
 import com.google.android.exoplayer2.ExoPlayer
 import com.google.android.exoplayer2.MediaItem
 import com.google.android.exoplayer2.Player
-import com.prototype.newkmm.domain.JournalEntry
+import com.prototype.newkmm.domain.JournyEntry
+import com.prototype.newkmm.presentation.screen.RecordingState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -96,12 +99,14 @@ actual class AudioUtilImpl(private val context: Context) {
 
 actual interface MainAudioUtil {
 
+    actual val recordingState : StateFlow<RecordingState>
+
     @Composable
     actual fun registerPermission(isRecording: (Boolean) -> Unit)
 
 
-    actual fun startAudioProcess(scope: CoroutineScope, isRecording: (Boolean) -> Unit)
-    actual fun stopAudioProcess(scope: CoroutineScope, isRecording: (Boolean) -> Unit)
+    actual fun startAudioProcess(scope: CoroutineScope, resume:Boolean, pause: Boolean)
+    actual fun stopAudioProcess(scope: CoroutineScope, stop:Boolean)
 }
 
 
@@ -118,15 +123,17 @@ class AudioUtil(private val context: Context) : MainAudioUtil {
 
     private lateinit var permissionLauncher: ManagedActivityResultLauncher<String, Boolean>
 
+    private val _recordingState = MutableStateFlow<RecordingState>(RecordingState.Idle)
+
+    override val recordingState: StateFlow<RecordingState> = _recordingState
+
     @Composable
     override fun registerPermission(isRecording: (Boolean) -> Unit) {
         permissionLauncher = rememberLauncherForActivityResult(
             ActivityResultContracts.RequestPermission()
         ) {
             if (it) {
-                initMediaRecorder(context) {
-                    isRecording(it)
-                }
+                initMediaRecorder(context)
                 Toast.makeText(context, "Audio Permission Granted", Toast.LENGTH_SHORT).show()
 
             } else {
@@ -136,7 +143,7 @@ class AudioUtil(private val context: Context) : MainAudioUtil {
 
     }
 
-    private fun initMediaRecorder(context: Context, isRecording: (Boolean) -> Unit) {
+    private fun initMediaRecorder(context: Context) {
 
         val fileName = System.currentTimeMillis().toString() + ".m4a"
         val fileDir = File(context.filesDir, "audio")
@@ -151,17 +158,14 @@ class AudioUtil(private val context: Context) : MainAudioUtil {
         mediaRecorder.setAudioSamplingRate(44100)
         mediaRecorder.setOutputFile(file.path)
 
-        startRecording {
-            isRecording(it)
-        }
-
+        startRecording()
     }
 
-    private fun startRecording(isRecording: (Boolean) -> Unit) {
+    private fun startRecording() {
         try {
             mediaRecorder.prepare()
             mediaRecorder.start()
-            isRecording(true)
+            _recordingState.value = RecordingState.Start
             //show audio view and layout
         } catch (e: IllegalStateException) {
             e.printStackTrace()
@@ -170,20 +174,22 @@ class AudioUtil(private val context: Context) : MainAudioUtil {
         }
     }
 
-    private fun stopRecording(deleteRecording: Boolean = false, isRecording: (Boolean) -> Unit) {
+    private fun stopRecording(deleteRecording: Boolean = false) {
         try {
             //stop showing audio view or layout
             mediaRecorder.stop()
             mediaRecorder.release()
-            isRecording(false)
+            _recordingState.value = RecordingState.Stop
             //reset icons and composables
             if (deleteRecording)
                 file.delete()
             else
                 Log.d("JOENOTETAG", "Save audio to DB")
+
         } catch (e: Exception) {
             e.printStackTrace()
         }
+        _recordingState.value = RecordingState.Idle
     }
 
 
@@ -287,7 +293,7 @@ class AudioUtil(private val context: Context) : MainAudioUtil {
         }
     }
 
-    private fun playAudio(journalEntry: JournalEntry, context: Context) {
+    private fun playAudio(journyEntry: JournyEntry, context: Context) {
         if (this::exoPlayer.isInitialized)
             exoPlayer.stop()
         else {
@@ -301,7 +307,7 @@ class AudioUtil(private val context: Context) : MainAudioUtil {
             })
         }
 
-        val mediaItem = MediaItem.fromUri(journalEntry.audioFile)
+        val mediaItem = MediaItem.fromUri(journyEntry.audioFile)
         exoPlayer.setMediaItem(mediaItem)
         exoPlayer.prepare()
         exoPlayer.play()
@@ -310,19 +316,27 @@ class AudioUtil(private val context: Context) : MainAudioUtil {
     }
 
 
-    override fun startAudioProcess(scope: CoroutineScope, isRecording: (Boolean) -> Unit) {
-        coroutineScope = scope
-        requestAudioPermission(context, permissionLauncher) {
-            isRecording(it)
+    override fun startAudioProcess(scope: CoroutineScope, resume:Boolean, pause: Boolean) {
+        if (pause){
+            mediaRecorder.pause()
+            _recordingState.value = RecordingState.Pause
+            return
         }
+
+        if (resume){
+            mediaRecorder.resume()
+            _recordingState.value = RecordingState.Resume
+            return
+        }
+
+        coroutineScope = scope
+        requestAudioPermission(context, permissionLauncher)
 
     }
 
-    override fun stopAudioProcess(scope: CoroutineScope, isRecording: (Boolean) -> Unit) {
+    override fun stopAudioProcess(scope: CoroutineScope, stop:Boolean) {
         scope.cancel("Audio Record Process completed")
-        stopRecording {
-            isRecording(it)
-        }
+        stopRecording(stop)
 
     }
 
@@ -330,7 +344,6 @@ class AudioUtil(private val context: Context) : MainAudioUtil {
     private fun requestAudioPermission(
         context: Context,
         permsLauncher: ManagedActivityResultLauncher<String, Boolean>,
-        isRecording: (Boolean) -> Unit
     ) {
         when {
             ContextCompat.checkSelfPermission(
@@ -338,9 +351,7 @@ class AudioUtil(private val context: Context) : MainAudioUtil {
                 Manifest.permission.RECORD_AUDIO
             ) == PackageManager.PERMISSION_GRANTED -> {
                 Toast.makeText(context, "Check Audio Permission GRANTED", Toast.LENGTH_SHORT).show()
-                initMediaRecorder(context) {
-                    isRecording(it)
-                }
+                initMediaRecorder(context)
             }
 
             (context as ComponentActivity).shouldShowRequestPermissionRationale(Manifest.permission.RECORD_AUDIO) -> {

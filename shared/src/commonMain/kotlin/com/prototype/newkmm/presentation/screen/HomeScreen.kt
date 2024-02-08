@@ -1,8 +1,5 @@
-package com.prototype.newkmm.android
+package com.prototype.newkmm.presentation.screen
 
-import android.os.Bundle
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -11,6 +8,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -25,7 +23,6 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -34,53 +31,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.prototype.newkmm.PlatformUtil
-import com.prototype.newkmm.core.DatabaseDriverFactory
-import com.prototype.newkmm.data.JournyEntryDataSourceImpl
-import com.prototype.newkmm.database.JournyPrototypeDatabase
-import com.prototype.newkmm.presentation.screen.MainView
-import moe.tlaster.precompose.PreComposeApp
-
-class MainActivity : ComponentActivity() {
-    private val db = JournyPrototypeDatabase(driver = DatabaseDriverFactory(this).createDriver())
-    private val platformUtil = PlatformUtil(this)
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        setContent {
-            PreComposeApp {
-                MyApplicationTheme {
-                    Surface(
-                        modifier = Modifier.fillMaxSize(),
-                        color = MaterialTheme.colorScheme.background
-                    ) {
-                        MainView(platformUtil, JournyEntryDataSourceImpl(db))
-                    }
-                }
-            }
-        }
-    }
-}
+import com.prototype.newkmm.presentation.JournyNavigationRoute
+import moe.tlaster.precompose.navigation.Navigator
 
 @Composable
-fun GreetingView(text: String) {
-    Text(text = text)
-}
-
-//@Preview
-@Composable
-fun DefaultPreview() {
-    MyApplicationTheme {
-        GreetingView("Hello, Android!")
-    }
-}
-
-
-@Preview
-@Composable
-fun MainHomeView() {
+fun HomeScreen(
+    navigator: Navigator
+) {
     Surface(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
             Row(
@@ -90,7 +49,7 @@ fun MainHomeView() {
                 Text(
                     modifier = Modifier
                         .align(Alignment.CenterVertically)
-                        .padding(start = 16.dp, end = 10.dp), text = "Journy", fontSize = 18.sp
+                        .padding(top = 16.dp, start = 16.dp, end = 10.dp), text = "Journy", fontSize = 18.sp
                 )
                 IconButton(modifier = Modifier
                     .align(Alignment.CenterVertically)
@@ -110,22 +69,33 @@ fun MainHomeView() {
             LazyColumn(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .fillMaxHeight(0.7f).padding(top = 20.dp)
             ) {
-                item { HomeView() }
-                item { HomeView() }
-                item { HomeView() }
-                item { HomeView() }
-                item { HomeView() }
-                item { HomeView() }
+                item { JournyEntryItemView() }
+                item { JournyEntryItemView() }
+                item { JournyEntryItemView() }
+                item { JournyEntryItemView() }
+                item { JournyEntryItemView() }
+                item { JournyEntryItemView() }
+                item { JournyEntryItemView() }
+                item { JournyEntryItemView() }
+                item { JournyEntryItemView() }
+                item { JournyEntryItemView() }
+                item { JournyEntryItemView() }
+                item { JournyEntryItemView() }
+                item { JournyEntryItemView() }
+                item { JournyEntryItemView() }
             }
 
-            Spacer(modifier = Modifier.height(90.dp))
+            Spacer(modifier = Modifier.height(60.dp))
 
             Box(
                 modifier = Modifier
-                    .height(70.dp)
+                    .height(65.dp)
                     .align(Alignment.CenterHorizontally)
-                    .clickable { },
+                    .clickable {
+                        navigator.navigate(JournyNavigationRoute.RecordScreen.route)
+                    },
                 contentAlignment = Alignment.Center
             ) {
                 Box(
@@ -165,10 +135,8 @@ fun MainHomeView() {
     }
 }
 
-
-//@Preview
 @Composable
-fun HomeView() {
+fun JournyEntryItemView() {
     Surface(modifier = Modifier.height(60.dp)) {
         Row(modifier = Modifier.fillMaxWidth()) {
             Text(

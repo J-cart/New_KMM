@@ -2,7 +2,10 @@ package com.prototype.newkmm
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.ImageBitmap
+import com.prototype.newkmm.presentation.screen.RecordingState
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import platform.UIKit.UIDevice
 
 class IOSPlatform: Platform {
@@ -23,20 +26,25 @@ actual class AudioUtilImpl{
 }
 actual interface MainAudioUtil{
 
+    actual val recordingState : StateFlow<RecordingState>
+
     @Composable
     actual fun registerPermission(isRecording: (Boolean) -> Unit)
 
-    actual fun startAudioProcess(scope: CoroutineScope, isRecording: (Boolean) -> Unit)
-    actual fun stopAudioProcess(scope: CoroutineScope, isRecording: (Boolean) -> Unit)
+    actual fun startAudioProcess(scope: CoroutineScope, resume:Boolean, pause: Boolean)
+    actual fun stopAudioProcess(scope: CoroutineScope, stop:Boolean)
 }
 
 class AudioUtil: MainAudioUtil {
 
-    override fun startAudioProcess(scope: CoroutineScope, isRecording: (Boolean) -> Unit) {
+    private val _recordingState = MutableStateFlow<RecordingState>(RecordingState.Idle)
+
+    override val recordingState: StateFlow<RecordingState> = _recordingState
+    override fun startAudioProcess(scope: CoroutineScope, resume:Boolean, pause: Boolean) {
         TODO("Not yet implemented")
     }
 
-    override fun stopAudioProcess(scope: CoroutineScope, isRecording: (Boolean) -> Unit) {
+    override fun stopAudioProcess(scope: CoroutineScope, stop:Boolean) {
         TODO("Not yet implemented")
     }
 
