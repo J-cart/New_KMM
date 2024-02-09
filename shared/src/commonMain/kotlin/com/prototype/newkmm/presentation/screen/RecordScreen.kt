@@ -26,14 +26,20 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import co.touchlab.kermit.Logger
 import com.prototype.newkmm.PlatformUtil
 import com.prototype.newkmm.domain.JournyEntry
 import com.prototype.newkmm.domain.JournyEntryDataSource
@@ -53,12 +59,59 @@ fun RecordScreen(
     val recordViewModel =
         getViewModel(key = Unit, viewModelFactory { RecordScreenViewModel(journyEntryDataSource) })
 
+    val scope = rememberCoroutineScope()
 
+    var isRecordingMode by remember { mutableStateOf(false) }
     val audioUtil = platformUtil.createAudioUtil()
-    audioUtil.registerPermission { }
+    audioUtil.registerPermission {
+        isRecordingMode = it
+    }
     val recordingState by audioUtil.recordingState.collectAsState()
 
+  /*  LaunchedEffect(recordingState){
+        Logger.d("PROTOTYPEKMM"){
+            "Recording State-> $recordingState"
+        }
+        if (recordingState is RecordingState.Stop){
+            (recordingState as RecordingState.Stop).audioPath?.let {
+                recordViewModel.addRecording(
+                    JournyEntry(
+                        uuid = Clock.System.now().toEpochMilliseconds().toString(),
+                        audioFile = it,
+                        createdAt = Clock.System.now().toEpochMilliseconds(),
+                        updatedAt = Clock.System.now().toEpochMilliseconds()
+                    )
+                )
+            } ?: onNavigateUp()
 
+        }
+    }*/
+    LaunchedEffect(isRecordingMode){
+        Logger.d("PROTOTYPEKMM"){
+            "Recording State-> $isRecordingMode"
+        }
+
+    }
+/* Platform RecordView
+
+    audioUtil.RecordScreenView(
+        isAudioRecording = isRecordingMode,
+        onStartRec = {
+            audioUtil.startAudioProcess(scope,false, false){
+                isRecordingMode = it
+            }
+        },
+        onStopRec = {path,stop->
+            audioUtil.stopAudioProcess(scope,stop){
+                isRecordingMode = it
+            }
+        },
+        onNavigateUp= {
+            onNavigateUp()
+        }
+    )
+
+*/
 
     Surface {
         Column(modifier = Modifier.fillMaxSize()) {
@@ -94,7 +147,12 @@ fun RecordScreen(
                         .align(Alignment.CenterVertically)
                         .weight(1f)
                         .padding(6.dp)
-                        .clickable { }
+                        .clickable {
+                            audioUtil.stopAudioProcess(scope, stop = true){
+                                isRecordingMode = it
+                            }
+                            onNavigateUp()
+                        }
                 ) {
                     Row(
                         modifier = Modifier
@@ -121,7 +179,26 @@ fun RecordScreen(
                         .weight(1f)
                         .align(Alignment.CenterVertically)
                         .padding(6.dp)
-                        .clickable { }
+                        .clickable {
+                            /*if(recordingState is RecordingState.Start){
+                                audioUtil.stopAudioProcess(scope,false){
+                                    isRecordingMode = it
+                                }
+                            }else{
+                                audioUtil.startAudioProcess(scope,resume = false, pause = false){
+                                    isRecordingMode = it
+                                }
+                            }*/
+                            if(isRecordingMode){
+                                audioUtil.stopAudioProcess(scope,false){
+                                    isRecordingMode = it
+                                }
+                            }else{
+                                audioUtil.startAudioProcess(scope,resume = false, pause = false){
+                                    isRecordingMode = it
+                                }
+                            }
+                        }
                 ) {
                     Box(
                         modifier = Modifier
@@ -130,15 +207,32 @@ fun RecordScreen(
                                 shape = RoundedCornerShape(40.dp),
                                 color = Color.Magenta,
                                 width = 2.dp
-                            )
+                            ),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .size(20.dp)
-                                .background(color = Color.Magenta, shape = CircleShape)
-                                .clip(CircleShape)
-                                .align(Alignment.Center)
-                        ) {}
+                        /*if (recordingState is RecordingState.Start) {
+                            Text("PAUSE/STOP")
+                        }else {
+                            Box(
+                                modifier = Modifier
+                                    .size(20.dp)
+                                    .background(color = Color.Magenta, shape = CircleShape)
+                                    .clip(CircleShape)
+                                    .align(Alignment.Center)
+                            ) {}
+                        }*/
+                        if (isRecordingMode) {
+                            Text("PAUSE/STOP")
+                        }else {
+                            Box(
+                                modifier = Modifier
+                                    .size(20.dp)
+                                    .background(color = Color.Magenta, shape = CircleShape)
+                                    .clip(CircleShape)
+                                    .align(Alignment.Center)
+                            ) {}
+                        }
+
                     }
                 }
 
@@ -148,7 +242,9 @@ fun RecordScreen(
                         .align(Alignment.CenterVertically)
                         .weight(1f)
                         .padding(6.dp)
-                        .clickable { }
+                        .clickable {
+                            onNavigateUp()
+                        }
                 ) {
                     Row(
                         modifier = Modifier
@@ -202,7 +298,7 @@ class RecordScreenViewModel(private val journyEntryDataSource: JournyEntryDataSo
 sealed class RecordingState {
     object Idle : RecordingState()
     object Start : RecordingState()
-    object Stop : RecordingState()
+    data class Stop(val audioPath: String?) : RecordingState()
     object Pause : RecordingState()
     object Resume : RecordingState()
 }

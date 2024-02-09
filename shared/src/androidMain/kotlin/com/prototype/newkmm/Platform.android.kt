@@ -3,7 +3,6 @@ package com.prototype.newkmm
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
-import android.media.MediaMetadataRetriever
 import android.media.MediaRecorder
 import android.util.Log
 import android.widget.Toast
@@ -29,33 +28,30 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBackIos
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.google.android.exoplayer2.ExoPlayer
-import com.google.android.exoplayer2.MediaItem
-import com.google.android.exoplayer2.Player
-import com.prototype.newkmm.domain.JournyEntry
 import com.prototype.newkmm.presentation.screen.RecordingState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.asStateFlow
 import java.io.File
 import java.io.IOException
 
@@ -93,31 +89,31 @@ fun registerPermission(
 }
 
 
-actual class AudioUtilImpl(private val context: Context) {
-    actual fun initUtil(): MainAudioUtil = AudioUtil(context)
-}
 
 actual interface MainAudioUtil {
 
-    actual val recordingState : StateFlow<RecordingState>
+    actual val recordingState: StateFlow<RecordingState>
 
     @Composable
     actual fun registerPermission(isRecording: (Boolean) -> Unit)
 
+    @Composable
+    actual fun RecordScreenView(
+        isAudioRecording: Boolean,
+        onStartRec: () -> Unit,
+        onStopRec: (String?, Boolean) -> Unit,
+        onNavigateUp: () -> Unit
+    )
 
-    actual fun startAudioProcess(scope: CoroutineScope, resume:Boolean, pause: Boolean)
-    actual fun stopAudioProcess(scope: CoroutineScope, stop:Boolean)
+    actual fun startAudioProcess(scope: CoroutineScope, resume: Boolean, pause: Boolean, isRecording: (Boolean) -> Unit)
+    actual fun stopAudioProcess(scope: CoroutineScope, stop: Boolean, isRecording: (Boolean) -> Unit)
 }
 
 
 class AudioUtil(private val context: Context) : MainAudioUtil {
     private lateinit var mediaRecorder: MediaRecorder
     private lateinit var file: File
-    // private var isRecording = false
-
-    private var timerJob: Job? = null
-    private var msToFinishOnResume: Long = 0
-    private lateinit var coroutineScope: CoroutineScope
+    private val coroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     private lateinit var exoPlayer: ExoPlayer
 
@@ -125,7 +121,8 @@ class AudioUtil(private val context: Context) : MainAudioUtil {
 
     private val _recordingState = MutableStateFlow<RecordingState>(RecordingState.Idle)
 
-    override val recordingState: StateFlow<RecordingState> = _recordingState
+    override val recordingState: StateFlow<RecordingState> = _recordingState.asStateFlow()
+
 
     @Composable
     override fun registerPermission(isRecording: (Boolean) -> Unit) {
@@ -133,7 +130,9 @@ class AudioUtil(private val context: Context) : MainAudioUtil {
             ActivityResultContracts.RequestPermission()
         ) {
             if (it) {
-                initMediaRecorder(context)
+                initMediaRecorder(context){state->
+                    isRecording(state)
+                }
                 Toast.makeText(context, "Audio Permission Granted", Toast.LENGTH_SHORT).show()
 
             } else {
@@ -143,7 +142,7 @@ class AudioUtil(private val context: Context) : MainAudioUtil {
 
     }
 
-    private fun initMediaRecorder(context: Context) {
+    private fun initMediaRecorder(context: Context, isRecording: (Boolean) -> Unit) {
 
         val fileName = System.currentTimeMillis().toString() + ".m4a"
         val fileDir = File(context.filesDir, "audio")
@@ -158,14 +157,17 @@ class AudioUtil(private val context: Context) : MainAudioUtil {
         mediaRecorder.setAudioSamplingRate(44100)
         mediaRecorder.setOutputFile(file.path)
 
-        startRecording()
+        startRecording{
+            isRecording(it)
+        }
     }
 
-    private fun startRecording() {
+    private fun startRecording(isRecording: (Boolean) -> Unit) {
         try {
             mediaRecorder.prepare()
             mediaRecorder.start()
             _recordingState.value = RecordingState.Start
+            isRecording(true)
             //show audio view and layout
         } catch (e: IllegalStateException) {
             e.printStackTrace()
@@ -174,169 +176,55 @@ class AudioUtil(private val context: Context) : MainAudioUtil {
         }
     }
 
-    private fun stopRecording(deleteRecording: Boolean = false) {
+    private fun stopRecording(deleteRecording: Boolean = false,isRecording: (Boolean) -> Unit) {
         try {
             //stop showing audio view or layout
             mediaRecorder.stop()
             mediaRecorder.release()
-            _recordingState.value = RecordingState.Stop
+            isRecording(false)
             //reset icons and composables
-            if (deleteRecording)
+            if (deleteRecording) {
                 file.delete()
-            else
-                Log.d("JOENOTETAG", "Save audio to DB")
-
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-        _recordingState.value = RecordingState.Idle
-    }
-
-
-    private fun startTimer(millisToFinish: Long) {
-        timerJob?.cancel()
-        timerJob = coroutineScope.countDownTimer(
-            millisToFinish,
-            50,
-            onInterval = {
-                msToFinishOnResume = it
-                val text = it.milliSecondsToCountDown()
-//                val payload = mapOf(
-//                    Constant.Key.TIMER to text,
-//                    Constant.Key.PROGRESS to getExoPlayerProgress(),
-//                )
-//                notesAdapter.updateAudioViewHolder(currentPosition, payload)
-            },
-            onFinished = {
-                val text = exoPlayer.duration.milliSecondsToCountDown()
-//                val payload = mapOf(
-//                    Constant.Key.TIMER to text,
-//                    Constant.Key.PROGRESS to 0f,
-//                )
-//                notesAdapter.updateAudioViewHolder(currentPosition, payload, true)
-            })
-    }
-
-    fun pauseTimer() = timerJob?.cancel()
-
-    fun resumeTimer() = startTimer(msToFinishOnResume)
-
-    private fun getExoPlayerProgress(): Float =
-        ((exoPlayer.currentPosition * 100) / exoPlayer.duration).toFloat()
-
-
-    private fun CoroutineScope.countDownTimer(
-        totalMillis: Long,
-        intervalInMillis: Long = 1000,
-        onInterval: (millisLeft: Long) -> Unit = {},
-        onFinished: () -> Unit = {},
-    ) = this.launch(Dispatchers.IO) {
-        var total = totalMillis
-        while (isActive) {
-            if (total > 0) {
-                withContext(Dispatchers.Main) {
-                    onInterval(total)
-                }
-                delay(intervalInMillis)
-                total -= intervalInMillis
-            } else {
-                withContext(Dispatchers.Main) {
-                    onFinished()
-                    cancel("Task Completed")
-                }
+                _recordingState.value = RecordingState.Stop(null)
             }
-        }
-    }
+            else {
+                Log.d("PROTOTYPEKMM", "Save audio to DB")
+                _recordingState.value = RecordingState.Stop(file.absolutePath)
+            }
 
-    private fun Long.milliSecondsToCountDown(): String {
-        if (this <= 0) return "00:00"
-        val seconds = this / 1000
-        val hour = seconds / 3600
-        val min = (seconds / 60) % 60
-        val sec = seconds % 60
-        val min0 = if (min < 10) "0" else ""
-        val sec0 = if (sec < 10) "0" else ""
-        val hourStr = when (hour) {
-            0L -> ""
-            in 1..10 -> "0$hour:"
-            else -> "$hour:"
-        }
-        return "$hourStr$min0$min:$sec0$sec"
-    }
-
-
-    private var currentlyPlayingId: Long = -1
-    private val metaDataRetriever = MediaMetadataRetriever()
-
-    fun getCurrentlyPlayingId() = currentlyPlayingId
-
-    fun updateCurrentPlayingId(id: Long) = id.also { currentlyPlayingId = it }
-
-    fun updateAudioViewHolder(position: Int, payload: Map<*, *>, audioEnded: Boolean = false) {
-        if (audioEnded) {
-            updateCurrentPlayingId(-1)
-//            notifyItemChanged(position)
-        } else {
-//            notifyItemChanged(position, payload)
-        }
-    }
-
-    val getAudioLength: (String?) -> String = { filePath ->
-        try {
-            metaDataRetriever.setDataSource(filePath)
-            val durationStr: String? =
-                metaDataRetriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
-            durationStr?.toLong()?.milliSecondsToCountDown() ?: ""
         } catch (e: Exception) {
             e.printStackTrace()
-            ""
         }
     }
 
-    private fun playAudio(journyEntry: JournyEntry, context: Context) {
-        if (this::exoPlayer.isInitialized)
-            exoPlayer.stop()
-        else {
-            exoPlayer = ExoPlayer.Builder(context).build()
-            exoPlayer.addListener(object : Player.Listener {
-                override fun onPlaybackStateChanged(playbackState: Int) {
-                    super.onPlaybackStateChanged(playbackState)
-                    if (playbackState == ExoPlayer.STATE_READY)
-                        startTimer(exoPlayer.duration)
-                }
-            })
-        }
-
-        val mediaItem = MediaItem.fromUri(journyEntry.audioFile)
-        exoPlayer.setMediaItem(mediaItem)
-        exoPlayer.prepare()
-        exoPlayer.play()
-//            notesAdapter.updateCurrentPlayingId(note.id)
-
-    }
 
 
-    override fun startAudioProcess(scope: CoroutineScope, resume:Boolean, pause: Boolean) {
-        if (pause){
+    override fun startAudioProcess(scope: CoroutineScope, resume: Boolean, pause: Boolean,isRecording: (Boolean) -> Unit) {
+        if (pause) {
             mediaRecorder.pause()
             _recordingState.value = RecordingState.Pause
             return
         }
 
-        if (resume){
+        if (resume) {
             mediaRecorder.resume()
             _recordingState.value = RecordingState.Resume
             return
         }
 
-        coroutineScope = scope
-        requestAudioPermission(context, permissionLauncher)
+//        coroutineScope = scope
+        requestAudioPermission(context, permissionLauncher){
+            isRecording(it)
+        }
 
     }
 
-    override fun stopAudioProcess(scope: CoroutineScope, stop:Boolean) {
-        scope.cancel("Audio Record Process completed")
-        stopRecording(stop)
+    override fun stopAudioProcess(scope: CoroutineScope, stop: Boolean,isRecording: (Boolean) -> Unit) {
+
+        stopRecording(stop){
+            isRecording(it)
+        }
+        coroutineScope.cancel("Audio Record Process completed")
 
     }
 
@@ -344,14 +232,18 @@ class AudioUtil(private val context: Context) : MainAudioUtil {
     private fun requestAudioPermission(
         context: Context,
         permsLauncher: ManagedActivityResultLauncher<String, Boolean>,
+        isRecording: (Boolean) -> Unit
     ) {
         when {
             ContextCompat.checkSelfPermission(
                 context,
                 Manifest.permission.RECORD_AUDIO
             ) == PackageManager.PERMISSION_GRANTED -> {
+                initMediaRecorder(context){
+                    isRecording(it)
+                }
                 Toast.makeText(context, "Check Audio Permission GRANTED", Toast.LENGTH_SHORT).show()
-                initMediaRecorder(context)
+
             }
 
             (context as ComponentActivity).shouldShowRequestPermissionRationale(Manifest.permission.RECORD_AUDIO) -> {
@@ -371,117 +263,148 @@ class AudioUtil(private val context: Context) : MainAudioUtil {
         }
     }
 
-}
+    @Composable
+    override fun RecordScreenView(
+        isAudioRecording: Boolean,
+        onStartRec: () -> Unit,
+        onStopRec: (String?,Boolean) -> Unit,
+        onNavigateUp:()->Unit
+    ) {
 
-
-
-
-@Composable
-fun AudioView() {
-    Surface {
-        Column(modifier = Modifier.fillMaxSize()) {
-            Column(modifier = Modifier
-                .fillMaxWidth()
-                .fillMaxHeight(0.8f),
-                verticalArrangement = Arrangement.Center
-            ) {
-                Text(
-                    modifier = Modifier.align(Alignment.CenterHorizontally),
-                    text = "Recording"
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-                Text(
-                    modifier = Modifier.align(Alignment.CenterHorizontally),
-                    text = "00:00:00",
-                    fontSize = 30.sp
-                )
-            }
-            Spacer(modifier = Modifier.height(20.dp))
-            Row {
-                Box(
+        Surface {
+            Column(modifier = Modifier.fillMaxSize()) {
+                IconButton(
+                    modifier = Modifier.align(Alignment.Start)
+                        .padding(start = 16.dp, top = 20.dp, bottom = 12.dp), onClick = {
+                        onNavigateUp()
+                    }) {
+                    Icon(imageVector = Icons.Default.ArrowBackIos, contentDescription = "Back")
+                }
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .align(Alignment.CenterVertically)
-                        .weight(1f)
-                        .padding(6.dp)
-                        .clickable { }
+                        .fillMaxHeight(0.8f),
+                    verticalArrangement = Arrangement.Center
                 ) {
-                    Row(
-                        modifier = Modifier
-                            .height(50.dp)
-                            .clip(RoundedCornerShape(20.dp))
-                            .align(Alignment.Center)
-                    ) {
-                        Icon(
-                            modifier = Modifier.align(Alignment.CenterVertically),
-                            imageVector = Icons.Default.Clear,
-                            contentDescription = "Stop"
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            modifier = Modifier.align(Alignment.CenterVertically),
-                            text = "STOP"
-                        )
-                    }
+                    Text(
+                        modifier = Modifier.align(Alignment.CenterHorizontally),
+                        text = "Recording"
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        modifier = Modifier.align(Alignment.CenterHorizontally),
+                        text = "00:00:00",
+                        fontSize = 30.sp
+                    )
                 }
-
-                Box(
-                    modifier = Modifier
-                        .height(70.dp)
-                        .weight(1f)
-                        .align(Alignment.CenterVertically)
-                        .padding(6.dp)
-                        .clickable { }
-                ) {
+                Spacer(modifier = Modifier.height(20.dp))
+                Row {
                     Box(
                         modifier = Modifier
-                            .fillMaxSize()
-                            .border(
-                                shape = RoundedCornerShape(40.dp),
-                                color = androidx.compose.ui.graphics.Color.Magenta,
-                                width = 2.dp
+                            .fillMaxWidth()
+                            .align(Alignment.CenterVertically)
+                            .weight(1f)
+                            .padding(6.dp)
+                            .clickable {
+                                onStopRec(null, true)
+                                onNavigateUp()
+                            }
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .height(50.dp)
+                                .clip(RoundedCornerShape(20.dp))
+                                .align(Alignment.Center)
+                        ) {
+                            Icon(
+                                modifier = Modifier.align(Alignment.CenterVertically),
+                                imageVector = Icons.Default.Clear,
+                                contentDescription = "Stop"
                             )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                modifier = Modifier.align(Alignment.CenterVertically),
+                                text = "STOP"
+                            )
+                        }
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .height(70.dp)
+                            .weight(1f)
+                            .align(Alignment.CenterVertically)
+                            .padding(6.dp)
+                            .clickable {
+
+                                if(isAudioRecording){
+                                    onStartRec()
+                                }else{
+                                    onStopRec("file.absolutePath",false)
+                                }
+                            }
                     ) {
                         Box(
                             modifier = Modifier
-                                .size(20.dp)
-                                .background(color = androidx.compose.ui.graphics.Color.Magenta, shape = CircleShape)
-                                .clip(CircleShape)
-                                .align(Alignment.Center)
-                        ) {}
-                    }
-                }
+                                .fillMaxSize()
+                                .border(
+                                    shape = RoundedCornerShape(40.dp),
+                                    color = Color.Magenta,
+                                    width = 2.dp
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (isAudioRecording) {
+                                Text("PAUSE/STOP")
+                            }else {
+                                Box(
+                                    modifier = Modifier
+                                        .size(20.dp)
+                                        .background(color = Color.Magenta, shape = CircleShape)
+                                        .clip(CircleShape)
+                                        .align(Alignment.Center)
+                                ) {}
+                            }
 
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .align(Alignment.CenterVertically)
-                        .weight(1f)
-                        .padding(6.dp)
-                        .clickable { }
-                ) {
-                    Row(
+                        }
+                    }
+
+                    Box(
                         modifier = Modifier
-                            .height(50.dp)
-                            .clip(RoundedCornerShape(20.dp))
-                            .align(Alignment.Center)
+                            .fillMaxWidth()
+                            .align(Alignment.CenterVertically)
+                            .weight(1f)
+                            .padding(6.dp)
+                            .clickable {
+                                onNavigateUp()
+                            }
                     ) {
-                        Text(
-                            modifier = Modifier.align(Alignment.CenterVertically),
-                            text = "NEXT"
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Icon(
-                            modifier = Modifier.align(Alignment.CenterVertically),
-                            imageVector = Icons.Default.PlayArrow,
-                            contentDescription = "Next"
-                        )
+                        Row(
+                            modifier = Modifier
+                                .height(50.dp)
+                                .clip(RoundedCornerShape(20.dp))
+                                .align(Alignment.Center)
+                        ) {
+                            Text(
+                                modifier = Modifier.align(Alignment.CenterVertically),
+                                text = "NEXT"
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Icon(
+                                modifier = Modifier.align(Alignment.CenterVertically),
+                                imageVector = Icons.Default.PlayArrow,
+                                contentDescription = "Next"
+                            )
+                        }
                     }
                 }
             }
         }
     }
+
+
 }
+
 
 
 

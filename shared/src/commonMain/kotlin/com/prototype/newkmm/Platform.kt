@@ -18,14 +18,20 @@ expect class PlatformUtil {
 }
 
 
-expect class AudioUtilImpl{
-    fun initUtil(): MainAudioUtil
-}
+
 expect interface MainAudioUtil{
     val recordingState : StateFlow<RecordingState>
     @Composable
     fun registerPermission(isRecording: (Boolean) -> Unit)
 
-    fun startAudioProcess(scope: CoroutineScope, resume:Boolean, pause: Boolean)
-    fun stopAudioProcess(scope: CoroutineScope, stop:Boolean)
+    @Composable
+    fun RecordScreenView(
+        isAudioRecording: Boolean,
+        onStartRec: () -> Unit,
+        onStopRec: (String?, Boolean) -> Unit,
+        onNavigateUp: () -> Unit
+    )
+
+    fun startAudioProcess(scope: CoroutineScope, resume:Boolean, pause: Boolean, isRecording: (Boolean) -> Unit)
+    fun stopAudioProcess(scope: CoroutineScope, stop:Boolean, isRecording: (Boolean) -> Unit)
 }

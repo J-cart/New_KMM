@@ -21,9 +21,6 @@ actual class PlatformUtil{
 }
 
 
-actual class AudioUtilImpl{
-    actual  fun initUtil(): MainAudioUtil = AudioUtil()
-}
 actual interface MainAudioUtil{
 
     actual val recordingState : StateFlow<RecordingState>
@@ -31,8 +28,16 @@ actual interface MainAudioUtil{
     @Composable
     actual fun registerPermission(isRecording: (Boolean) -> Unit)
 
-    actual fun startAudioProcess(scope: CoroutineScope, resume:Boolean, pause: Boolean)
-    actual fun stopAudioProcess(scope: CoroutineScope, stop:Boolean)
+    @Composable
+    actual fun RecordScreenView(
+        isAudioRecording: Boolean,
+        onStartRec: () -> Unit,
+        onStopRec: (String?, Boolean) -> Unit,
+        onNavigateUp: () -> Unit
+    )
+
+    actual fun startAudioProcess(scope: CoroutineScope, resume:Boolean, pause: Boolean,isRecording: (Boolean) -> Unit)
+    actual fun stopAudioProcess(scope: CoroutineScope, stop:Boolean, isRecording: (Boolean) -> Unit)
 }
 
 class AudioUtil: MainAudioUtil {
@@ -40,16 +45,26 @@ class AudioUtil: MainAudioUtil {
     private val _recordingState = MutableStateFlow<RecordingState>(RecordingState.Idle)
 
     override val recordingState: StateFlow<RecordingState> = _recordingState
-    override fun startAudioProcess(scope: CoroutineScope, resume:Boolean, pause: Boolean) {
+    override fun startAudioProcess(scope: CoroutineScope, resume:Boolean, pause: Boolean,isRecording: (Boolean) -> Unit) {
         TODO("Not yet implemented")
     }
 
-    override fun stopAudioProcess(scope: CoroutineScope, stop:Boolean) {
+    override fun stopAudioProcess(scope: CoroutineScope, stop:Boolean,isRecording: (Boolean) -> Unit) {
         TODO("Not yet implemented")
     }
 
     @Composable
     override fun registerPermission(isRecording: (Boolean) -> Unit) {
+        TODO("Not yet implemented")
+    }
+
+    @Composable
+    override fun RecordScreenView(
+        isAudioRecording: Boolean,
+        onStartRec: () -> Unit,
+        onStopRec: (String?, Boolean) -> Unit,
+        onNavigateUp: () -> Unit
+    ) {
         TODO("Not yet implemented")
     }
 }
